@@ -92,6 +92,13 @@
     border:1px solid #555;padding:.5em .8em;min-height:40px;cursor:pointer;border-radius:0;
   }
   .cmd-btn:hover,.cmd-btn:focus-visible{background:var(--fg);color:var(--bg);outline:none}
+  /* 마음 전하실 곳 (계좌) */
+  .acc-toggle{width:100%;text-align:left;margin-top:8px}
+  .acc-list{margin:4px 0 6px}
+  .acc-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dotted #333}
+  .acc-row .txt{flex:1;min-width:0;word-break:break-all;line-height:1.5}
+  .acc-row .holder{color:var(--dim);font-size:.92em}
+  .cmd-btn.sm{flex:none;min-height:34px;padding:.3em .6em;font-size:calc(var(--fs) * .9)}
   .fade{animation:fade .5s ease both}
   @keyframes fade{from{opacity:0}to{opacity:1}}
 
@@ -199,6 +206,23 @@
 // 저장할 때 쓰려고, 화면이 바뀌기 전의 원본 HTML 을 잡아 둔다
 const ORIGINAL_HTML = '<!doctype html>\n' + document.documentElement.outerHTML;
 const CONFIG = JSON.parse(document.getElementById('wedding-config').textContent);
+CONFIG.accounts = CONFIG.accounts || { groom: [], bride: [] };
+
+// 복사 (카카오톡 등 앱 안 브라우저 대비 예비 방식 포함)
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy'); ta.remove(); return ok;
+  } catch (e) { return false; }
+}
+function flash(button, okText, failText, ok, restore) {
+  button.textContent = ok ? okText : failText;
+  setTimeout(() => { button.textContent = restore; }, 1600);
+}
 
 const PROMPT = 'C:\\Users\\love>';
 const COLORS = { bride:'#ff6fa5', groom:'#5fb4ff', love:'#ff3b5c', fill:'#e8264a', fg:'#cccccc' };
@@ -588,13 +612,63 @@ async function run() {
     };
     if (CONFIG.mapUrl) btn('지도 보기', () => window.open(CONFIG.mapUrl, '_blank', 'noopener'));
     const copyBtn = btn('주소 복사', async () => {
-      try { await navigator.clipboard.writeText(CONFIG.address); copyBtn.textContent = '[ 복사됨 ✓ ]'; }
-      catch (e) { copyBtn.textContent = '[ 복사 실패 ]'; }
-      setTimeout(() => { copyBtn.textContent = '[ 주소 복사 ]'; }, 1600);
+      flash(copyBtn, '[ 복사됨 ✓ ]', '[ 복사 실패 ]', await copyText(CONFIG.address), '[ 주소 복사 ]');
     });
     btn('다시 보기', () => { window.scrollTo({ top: 0 }); run(); });
     card.appendChild(actions);
     autoScroll(true);
+
+    // 마음 전하실 곳 — 계좌가 하나라도 있을 때만
+    const acc = CONFIG.accounts;
+    if ((acc.groom || []).length || (acc.bride || []).length) {
+      await sleep(400, id);
+      const gift = document.createElement('div');
+      gift.className = 'card fade';
+      out.appendChild(gift);
+      await typeLine('[ 마음 전하실 곳 ]', id, { cls: 'ok b', parent: gift, speed: 40 });
+      const note = newLine('dim', gift);
+      note.textContent = '참석이 어려우신 분들을 위해 계좌번호를 함께 적었습니다. 너그러운 마음으로 양해 부탁드립니다.';
+      const group = (title, list, cls) => {
+        if (!list || !list.length) return;
+        const label = `[ + ${title} 계좌 보기 ]`, open = `[ - ${title} 계좌 닫기 ]`;
+        const tg = document.createElement('button');
+        tg.className = 'cmd-btn acc-toggle ' + cls;
+        tg.textContent = label;
+        tg.setAttribute('aria-expanded', 'false');
+        const box = document.createElement('div');
+        box.className = 'acc-list'; box.hidden = true;
+        list.forEach(a => {
+          const row = document.createElement('div');
+          row.className = 'acc-row';
+          const txt = document.createElement('div');
+          txt.className = 'txt';
+          txt.textContent = `${a.bank} ${a.number}`;
+          if (a.holder) {
+            const h = document.createElement('div');
+            h.className = 'holder';
+            h.textContent = `예금주 ${a.holder}`;
+            txt.appendChild(h);
+          }
+          const cb = document.createElement('button');
+          cb.className = 'cmd-btn sm';
+          cb.textContent = '[ 복사 ]';
+          cb.addEventListener('click', async () => {
+            flash(cb, '[ 복사됨 ✓ ]', '[ 실패 ]', await copyText(`${a.bank} ${a.number}`), '[ 복사 ]');
+          });
+          row.append(txt, cb);
+          box.appendChild(row);
+        });
+        tg.addEventListener('click', () => {
+          box.hidden = !box.hidden;
+          tg.textContent = box.hidden ? label : open;
+          tg.setAttribute('aria-expanded', String(!box.hidden));
+        });
+        gift.append(tg, box);
+      };
+      group('신랑측', acc.groom, 'blue');
+      group('신부측', acc.bride, 'pink');
+      autoScroll(true);
+    }
 
     printLine('');
     const last = newLine();
@@ -646,8 +720,16 @@ const FIELDS = [
   ['place', '장소'],
   ['address', '주소'],
   ['mapUrl', '지도 링크 (없으면 비워 두세요)'],
-  ['message', '초대 문구 (줄바꿈 그대로 · 빈 줄은 한 줄 띄움)', 'textarea']
+  ['message', '초대 문구 (줄바꿈 그대로 · 빈 줄은 한 줄 띄움)', 'textarea'],
+  ['accGroom', '신랑측 계좌 (한 줄에 하나 · 은행 | 계좌번호 | 예금주)', 'textarea'],
+  ['accBride', '신부측 계좌 (한 줄에 하나 · 은행 | 계좌번호 | 예금주)', 'textarea']
 ];
+const ACC_KEYS = { accGroom: 'groom', accBride: 'bride' };
+const accToText = list => (list || []).map(a => [a.bank, a.number, a.holder].filter(Boolean).join(' | ')).join('\n');
+const textToAcc = text => text.replace(/\r/g, '').split('\n')
+  .map(l => l.split('|').map(x => x.trim()))
+  .filter(p => p.length >= 2 && p[1])
+  .map(([bank, number, holder = '']) => ({ bank, number, holder }));
 const DRAFT_KEY = 'wedding-invitation-draft';
 const panel = document.getElementById('panel');
 const loginForm = document.getElementById('login');
@@ -669,14 +751,19 @@ FIELDS.forEach(([key, label, type]) => {
 
 function fillForm(cfg) {
   FIELDS.forEach(([key]) => {
-    $('f_' + key).value = key === 'message' ? (cfg.message || []).join('\n') : (cfg[key] || '');
+    const el = $('f_' + key);
+    if (ACC_KEYS[key]) el.value = accToText((cfg.accounts || {})[ACC_KEYS[key]]);
+    else el.value = key === 'message' ? (cfg.message || []).join('\n') : (cfg[key] || '');
   });
+  $('f_accGroom').placeholder = '예) 신한 | 110-123-456789 | 방창배';
+  $('f_accBride').placeholder = '예) 국민 | 123456-01-234567 | 이미수';
 }
 function readForm() {
-  const cfg = {};
+  const cfg = { accounts: { groom: [], bride: [] } };
   FIELDS.forEach(([key]) => {
     const v = $('f_' + key).value;
-    cfg[key] = key === 'message' ? v.replace(/\r/g, '').split('\n') : v.trim();
+    if (ACC_KEYS[key]) cfg.accounts[ACC_KEYS[key]] = textToAcc(v);
+    else cfg[key] = key === 'message' ? v.replace(/\r/g, '').split('\n') : v.trim();
   });
   return cfg;
 }
