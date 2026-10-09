@@ -154,9 +154,17 @@
 
         <form id="editor" autocomplete="off" hidden="">
           <div class="line ok b">[ 청첩장 설정 ]</div>
-          <div class="note">여기서 바꾼 내용은 [파일로 저장]으로 받은 새 파일을 다시 올려야 하객 화면에 반영됩니다.</div>
+          <div class="note">[ 저장하기 ]를 누르면 청첩장 링크의 내용이 바로 바뀝니다. (반영까지 1~2분)</div>
           <div class="spacer"></div>
           <div id="fields"></div>
+          <div class="hr"></div>
+          <div class="field">
+            <label for="ghToken" id="ghTokenLabel">GitHub 토큰 (이 기기에만 보관 · 처음 한 번만 입력)</label>
+            <input id="ghToken" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_...">
+          </div>
+          <div class="actions" style="margin-top:0">
+            <button class="cmd-btn sm" type="button" id="btnForgetToken">[ 이 기기에서 토큰 지우기 ]</button>
+          </div>
           <div class="hr"></div>
           <div class="field">
             <label for="newPw" id="newPwLabel">새 비밀번호 (바꿀 때만 입력)</label>
@@ -168,7 +176,7 @@
           </div>
           <div class="actions">
             <button class="cmd-btn" type="button" id="btnPreview">[ 미리보기 ]</button>
-            <button class="cmd-btn" type="submit">[ 파일로 저장 ]</button>
+            <button class="cmd-btn" type="submit" id="btnSave">[ 저장하기 ]</button>
             <button class="cmd-btn" type="button" data-close="">[ 닫기 ]</button>
           </div>
           <div class="msg" id="editMsg"></div>
@@ -822,7 +830,72 @@ $('btnPreview').addEventListener('click', () => {
   run();
 });
 
-editForm.addEventListener('submit', e => {
+// --- GitHub 저장: 저장소의 index.html 안 설정 블록만 바꿔 커밋한다 ---
+const GH = { owner: 'lonmell', repo: 'wedding', path: 'index.html', branch: 'main' };
+const CFG_RE = /(<script type="application\/json" id="wedding-config">)[\s\S]*?(<\/script>)/;
+const TOKEN_KEY = 'wedding-gh-token';
+const b64encode = str => {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+};
+const b64decode = b64 => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), c => c.charCodeAt(0)));
+async function ghApi(method, path, token, body) {
+  const r = await fetch('https://api.github.com' + path, {
+    method,
+    cache: 'no-store',
+    headers: Object.assign({
+      Authorization: 'Bearer ' + token,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    }, body ? { 'Content-Type': 'application/json' } : {}),
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { const err = new Error(data.message || String(r.status)); err.status = r.status; throw err; }
+  return data;
+}
+async function publishConfig(json, token) {
+  const url = `/repos/${GH.owner}/${GH.repo}/contents/${GH.path}`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const cur = await ghApi('GET', `${url}?ref=${GH.branch}`, token);
+    const src = b64decode(cur.content);
+    if (!CFG_RE.test(src)) throw new Error('저장소 파일에서 설정 블록을 찾지 못했습니다.');
+    const html = src.replace(CFG_RE, (_, a, b) => a + '\n' + json + '\n' + b);
+    try {
+      return await ghApi('PUT', url, token, { message: '청첩장 내용 수정', content: b64encode(html), sha: cur.sha, branch: GH.branch });
+    } catch (e) {
+      if (e.status === 409 && attempt === 0) continue;   // 그 사이 다른 저장이 있었으면 한 번 다시
+      throw e;
+    }
+  }
+}
+// --- GitHub 저장 끝 ---
+const storedToken = () => { try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; } };
+function refreshTokenUi() {
+  const has = !!storedToken();
+  $('ghToken').value = '';
+  $('ghToken').placeholder = has ? '이 기기에 저장되어 있음 (바꿀 때만 입력)' : 'github_pat_...';
+  $('btnForgetToken').hidden = !has;
+}
+$('btnForgetToken').addEventListener('click', () => {
+  try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+  refreshTokenUi();
+  editMsg('이 기기에서 토큰을 지웠습니다.', 'dim');
+});
+const _showEditor = showEditor;
+showEditor = function () { _showEditor(); refreshTokenUi(); };
+
+function downloadHtml(html) {
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = 'wedding_invitation.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+editForm.addEventListener('submit', async e => {
   e.preventDefault();
   const cfg = readForm();
   if (!cfg.groom || !cfg.bride) return editMsg('신랑·신부 이름은 비울 수 없습니다.', 'warn');
@@ -839,22 +912,42 @@ editForm.addEventListener('submit', e => {
   cfg.lock = lock;
 
   const json = JSON.stringify(cfg, null, 2).replace(/</g, '\\u003c');
-  const html = ORIGINAL_HTML.replace(
-    /(<script type="application\/json" id="wedding-config">)[\s\S]*?(<\/script>)/,
-    (_, a, b) => a + '\n' + json + '\n' + b
-  );
-  const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url; a.download = 'wedding_invitation.html';
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  const done = () => {
+    Object.assign(CONFIG, cfg);
+    unlocked = true;
+    try { localStorage.removeItem(DRAFT_KEY); } catch (err) {}
+    $('newPw').value = ''; $('newPw2').value = '';
+    $('newPwLabel').textContent = '새 비밀번호 (바꿀 때만 입력)';
+  };
 
-  Object.assign(CONFIG, cfg);
-  unlocked = true;
-  try { localStorage.removeItem(DRAFT_KEY); } catch (err) {}
-  $('newPw').value = ''; $('newPw2').value = '';
-  $('newPwLabel').textContent = '새 비밀번호 (바꿀 때만 입력)';
-  editMsg('저장했습니다: wedding_invitation.html\n이 파일을 청첩장 주소에 다시 올리면 하객 화면이 바뀝니다.', 'ok');
+  const typed = $('ghToken').value.trim();
+  const token = typed || storedToken();
+  if (!token) {
+    // 토큰이 없으면 예전처럼 파일로 받는다
+    downloadHtml(ORIGINAL_HTML.replace(CFG_RE, (_, a, b) => a + '\n' + json + '\n' + b));
+    done();
+    return editMsg('GitHub 토큰이 없어 링크에는 반영하지 못하고 파일로 받았습니다.\n토큰을 넣고 다시 [ 저장하기 ]를 누르면 링크에 바로 반영됩니다.', 'warn');
+  }
+
+  const saveBtn = $('btnSave');
+  saveBtn.disabled = true; saveBtn.textContent = '[ 저장 중... ]';
+  editMsg('청첩장 링크에 저장하는 중...', 'dim');
+  try {
+    await publishConfig(json, token);
+    if (typed) { try { localStorage.setItem(TOKEN_KEY, typed); } catch (err) {} }
+    done();
+    refreshTokenUi();
+    editMsg('저장 완료! 1~2분 뒤 청첩장 링크에 반영됩니다.\n(하객 폰에는 길게는 10분 정도 예전 화면이 보일 수 있습니다)', 'ok');
+  } catch (err) {
+    const msg =
+      err.status === 401 ? '토큰이 맞지 않거나 만료되었습니다. 새 토큰을 넣어 주세요.' :
+      (err.status === 403 || err.status === 404) ? `이 토큰에 ${GH.owner}/${GH.repo} 저장소 쓰기 권한이 없습니다.\n(토큰 권한: Contents → Read and write)` :
+      err.status ? `저장하지 못했습니다: ${err.message}` :
+      '저장하지 못했습니다. 인터넷 연결을 확인해 주세요.';
+    editMsg(msg, 'warn');
+  } finally {
+    saveBtn.disabled = false; saveBtn.textContent = '[ 저장하기 ]';
+  }
 });
 
 // 들어가는 방법: 제목 표시줄 5번 연속 누르기 · 주소 끝에 #edit
