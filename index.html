@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="ko"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>모바일 청첩장</title>
+<meta name="description" content="cmd 터미널 스타일 모바일 청첩장">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic+Coding:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page:#000;
+    --bg:#0c0c0c;
+    --bar:#1f1f1f;
+    --fg:#cccccc;
+    --dim:#7a7a7a;
+    --green:#16c60c;
+    --yellow:#f9f1a5;
+    --bride:#ff6fa5;
+    --groom:#5fb4ff;
+    --love:#ff3b5c;
+  }
+  /* 화면 폭에 따라 글자·여백·창 크기가 함께 바뀐다 */
+  :root{
+    --gap: clamp(10px, 3.6vw, 22px);      /* 창 바깥 여백 (CMD 테두리가 보이게) */
+    --fs: clamp(12px, 3.55vw, 15px);      /* 본문 글자 */
+    --bar-h: clamp(28px, 8.2vw, 34px);    /* 제목 표시줄 높이 */
+    --pad: clamp(10px, 3.4vw, 16px);      /* 창 안쪽 여백 */
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%;background:var(--page)}
+  body{
+    font-family:'Nanum Gothic Coding',Consolas,'D2Coding',monospace;
+    color:var(--fg);
+    /* 바탕화면 느낌의 배경 — 검은 CMD 창과 구분되게 */
+    background:radial-gradient(120% 80% at 50% 0%, #1b2233 0%, #0e1118 60%, #07080b 100%) fixed;
+    min-height:100vh;min-height:100dvh;
+    display:flex;justify-content:center;align-items:flex-start;
+    padding:
+      max(var(--gap), env(safe-area-inset-top))
+      max(var(--gap), env(safe-area-inset-right))
+      max(var(--gap), env(safe-area-inset-bottom))
+      max(var(--gap), env(safe-area-inset-left));
+  }
+  .win{
+    width:100%;max-width:480px;
+    min-height:calc(100vh - 2 * var(--gap));
+    min-height:calc(100dvh - 2 * var(--gap));
+    display:flex;flex-direction:column;
+    background:var(--bg);
+    border:1px solid #6b6b6b;border-radius:6px;
+    overflow:hidden;overflow:clip;
+    box-shadow:0 0 0 1px rgba(0,0,0,.6), 0 12px 40px rgba(0,0,0,.75);
+  }
+  .bar{
+    display:flex;align-items:center;flex:none;height:var(--bar-h);
+    background:var(--bar);border-bottom:1px solid #2c2c2c;
+    font-size:calc(var(--fs) * .88);color:#ddd;padding-left:calc(var(--pad) * .8);user-select:none;
+  }
+  .bar .ico{
+    width:1.25em;height:1.25em;border:1px solid #888;margin-right:.6em;
+    font-size:.8em;line-height:1.1em;text-align:center;color:#ccc;flex:none;
+  }
+  .bar .ttl{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar .btns{display:flex;flex:none;align-self:stretch}
+  .bar .btns span{width:calc(var(--bar-h) * 1.25);display:flex;align-items:center;justify-content:center;color:#bbb}
+  .bar .btns span:last-child:hover{background:#c42b1c;color:#fff}
+
+  .screen{flex:1;padding:var(--pad) var(--pad) calc(var(--pad) * 1.6 + env(safe-area-inset-bottom));font-size:var(--fs);line-height:1.75}
+  .line{white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;min-height:1.75em}
+  .dim{color:var(--dim)}
+  .ok{color:var(--green)}
+  .warn{color:var(--yellow)}
+  .pink{color:var(--bride)}
+  .blue{color:var(--groom)}
+  .love{color:var(--love)}
+  .b{font-weight:700}
+  .cursor{display:inline-block;width:.6em;height:1.05em;background:var(--fg);vertical-align:-.18em;margin-left:1px;animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  .stage{margin:12px 0 6px}
+  .stage canvas{display:block;width:100%}
+
+  .card{border:1px dashed #444;padding:12px 12px 14px;margin:12px 0 8px}
+  .card .line{min-height:1.6em}
+  .spacer{height:.8em}
+  .names{font-size:15px}
+
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .cmd-btn{
+    font:inherit;font-size:var(--fs);color:var(--fg);background:transparent;
+    border:1px solid #555;padding:.5em .8em;min-height:40px;cursor:pointer;border-radius:0;
+  }
+  .cmd-btn:hover,.cmd-btn:focus-visible{background:var(--fg);color:var(--bg);outline:none}
+  .fade{animation:fade .5s ease both}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+
+  /* 제목 표시줄은 스크롤해도 위에 붙어 있다 */
+  .bar{position:sticky;top:0;z-index:2;-webkit-tap-highlight-color:transparent}
+
+  /* 설정 화면 (신랑·신부 전용) */
+  .panel{position:fixed;inset:0;z-index:10;display:none;background:rgba(0,0,0,.88);overflow-y:auto;padding:var(--gap)}
+  .panel.open{display:block}
+  .panel .box{max-width:480px;margin:0 auto;background:var(--bg);border:1px solid #6b6b6b;border-radius:6px;overflow:hidden;font-size:var(--fs);line-height:1.6}
+  .panel .inner{padding:var(--pad)}
+  .field{margin:0 0 12px}
+  .field label{display:block;color:var(--dim);font-size:12px;margin-bottom:4px}
+  .field input,.field textarea{
+    width:100%;font:inherit;font-size:16px;color:var(--fg);background:#000;
+    border:1px solid #555;border-radius:0;padding:8px;
+  }
+  .field textarea{min-height:140px;resize:vertical}
+  .field input:focus,.field textarea:focus{outline:none;border-color:var(--green)}
+  .hr{border-top:1px dashed #444;margin:14px 0}
+  .note{color:var(--dim);font-size:12px}
+  .msg{min-height:1.6em;margin-top:8px;font-size:12px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+  <main class="win" aria-label="모바일 청첩장">
+    <div class="bar">
+      <div class="ico">C:\</div>
+      <div class="ttl">C:\Windows\system32\cmd.exe - wedding.exe</div>
+      <div class="btns"><span>—</span><span>☐</span><span>✕</span></div>
+    </div>
+    <div class="screen" id="out"></div>
+  </main>
+
+  <!-- 설정 화면: 제목 표시줄을 빠르게 5번 누르거나 주소 끝에 #edit -->
+  <div class="panel" id="panel" role="dialog" aria-modal="true" aria-label="청첩장 설정">
+    <div class="box">
+      <div class="bar"><div class="ico">C:\</div><div class="ttl">settings.cfg - 신랑·신부 전용</div></div>
+      <div class="inner">
+        <form id="login" autocomplete="off">
+          <div class="line ok b">[ 비밀번호 확인 ]</div>
+          <div class="spacer"></div>
+          <div class="field">
+            <label for="pw">비밀번호</label>
+            <input id="pw" type="password" inputmode="text" autocomplete="current-password">
+          </div>
+          <div class="actions">
+            <button class="cmd-btn" type="submit">[ 확인 ]</button>
+            <button class="cmd-btn" type="button" data-close="">[ 닫기 ]</button>
+          </div>
+          <div class="msg warn" id="loginMsg"></div>
+        </form>
+
+        <form id="editor" autocomplete="off" hidden="">
+          <div class="line ok b">[ 청첩장 설정 ]</div>
+          <div class="note">여기서 바꾼 내용은 [파일로 저장]으로 받은 새 파일을 다시 올려야 하객 화면에 반영됩니다.</div>
+          <div class="spacer"></div>
+          <div id="fields"></div>
+          <div class="hr"></div>
+          <div class="field">
+            <label for="newPw" id="newPwLabel">새 비밀번호 (바꿀 때만 입력)</label>
+            <input id="newPw" type="password" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label for="newPw2">새 비밀번호 확인</label>
+            <input id="newPw2" type="password" autocomplete="new-password">
+          </div>
+          <div class="actions">
+            <button class="cmd-btn" type="button" id="btnPreview">[ 미리보기 ]</button>
+            <button class="cmd-btn" type="submit">[ 파일로 저장 ]</button>
+            <button class="cmd-btn" type="button" data-close="">[ 닫기 ]</button>
+          </div>
+          <div class="msg" id="editMsg"></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+<!-- ============ 청첩장 내용 (설정 화면에서 저장하면 이 블록이 바뀝니다) ============ -->
+<script type="application/json" id="wedding-config">
+{
+  "groom": "방창배",
+  "bride": "이미수",
+  "groomParents": "방 형락 · 김 순이 의 아들",
+  "brideParents": "이 선엽 · 한 경란 의 딸",
+  "date": "2027년 11월 27일 토요일 오전 11시 30분",
+  "place": "칼라디움 웨딩홀 3층 그랜드홀",
+  "address": "대구광역시 동구 신서동 495",
+  "mapUrl": "https://naver.me/x7eQWe4m",
+  "message": [
+    "서로 다른 두 줄의 코드가",
+    "하나의 프로그램이 되려 합니다.",
+    "",
+    "귀한 걸음 하시어",
+    "저희의 첫 실행을 지켜봐 주세요."
+  ],
+  "lock": {
+    "salt": "4171e5a7499c8ad28f0237ee2cac1bbb",
+    "hash": "be651aa36c7cb4eee9fb66cda114cc046b8b8efbbb47e9de0b14ef410c85ffd6"
+  }
+}
+</script>
+
+<script>
+// 저장할 때 쓰려고, 화면이 바뀌기 전의 원본 HTML 을 잡아 둔다
+const ORIGINAL_HTML = '<!doctype html>\n' + document.documentElement.outerHTML;
+const CONFIG = JSON.parse(document.getElementById('wedding-config').textContent);
+
+const PROMPT = 'C:\\Users\\love>';
+const COLORS = { bride:'#ff6fa5', groom:'#5fb4ff', love:'#ff3b5c', fill:'#e8264a', fg:'#cccccc' };
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const out = document.getElementById('out');
+const cursor = document.createElement('span');
+cursor.className = 'cursor';
+
+let runId = 0;
+const sleep = (ms, id) => new Promise((res, rej) =>
+  setTimeout(() => (id === runId ? res() : rej('stop')), reduce ? 0 : ms));
+
+// 글자가 아래로 늘어나면 커서가 보이도록 자동 스크롤.
+// 사용자가 위로 올려 보는 중이면 멈추고, 맨 아래로 다시 내리면 이어서 따라간다.
+let follow = true, userScrollAt = 0;
+const nearBottom = () => window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80;
+['wheel', 'touchmove', 'keydown'].forEach(ev =>
+  window.addEventListener(ev, () => { userScrollAt = Date.now(); }, { passive: true }));
+window.addEventListener('scroll', () => {
+  if (Date.now() - userScrollAt < 800) follow = nearBottom();
+}, { passive: true });
+function autoScroll(smooth = false) {
+  if (!follow || !cursor.isConnected || panel.classList.contains('open')) return;
+  const margin = Math.max(48, window.innerHeight * .12);
+  const over = cursor.getBoundingClientRect().bottom - (window.innerHeight - margin);
+  if (over > 0) window.scrollBy({ top: over, behavior: smooth ? 'smooth' : 'auto' });
+}
+
+function newLine(cls = '', parent = out) {
+  const div = document.createElement('div');
+  div.className = 'line ' + cls;
+  parent.appendChild(div);
+  autoScroll();
+  return div;
+}
+async function typeLine(text, id, { cls = '', prompt = '', speed = 32, parent = out } = {}) {
+  const div = newLine(cls, parent);
+  if (prompt) {
+    const p = document.createElement('span');
+    p.textContent = prompt + ' ';
+    div.appendChild(p);
+  }
+  const t = document.createTextNode('');
+  div.appendChild(t);
+  div.appendChild(cursor);
+  for (const ch of text) { t.data += ch; autoScroll(); await sleep(speed, id); }
+  return div;
+}
+function printLine(text, cls = '', parent = out) {
+  const div = newLine(cls, parent);
+  div.textContent = text;
+  div.appendChild(cursor);
+  autoScroll();
+  return div;
+}
+
+/* ------------------------- 도트 하트 ------------------------- */
+const COLS = 26, ROWS = 22, MID = COLS / 2;
+const cv = document.createElement('canvas');
+const ctx = cv.getContext('2d');
+const stage = document.createElement('div');
+stage.className = 'stage';
+stage.appendChild(cv);
+
+const cells = [];
+(function buildGrid() {
+  const inside = (c, r) => {
+    if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return false;
+    const x = (c + .5 - MID) / MID * 1.25;
+    const y = 1.25 - (r + .5) / ROWS * 2.5;
+    const a = x * x + y * y - 1;
+    return a * a * a - x * x * y * y * y <= 0;
+  };
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    if (!inside(c, r)) continue;
+    const outline = !inside(c - 1, r) || !inside(c + 1, r) || !inside(c, r - 1) || !inside(c, r + 1);
+    cells.push({ c, r, side: c < MID ? -1 : 1, outline, at: 0 });
+  }
+})();
+const minR = Math.min(...cells.map(k => k.r));
+const maxR = Math.max(...cells.map(k => k.r));
+
+/* ---------- 신부 · 신랑 도트 캐릭터 (12 x 17, '.' = 빈칸) ---------- */
+const PAL = {
+  c: '#f9d56e',                // 티아라
+  v: 'rgba(214,228,245,.78)',  // 베일
+  h: '#8a5a44',                // 신부 머리
+  H: '#5a4a40',                // 신랑 머리
+  s: '#ffd2b0',                // 피부
+  e: '#2a2a2a',                // 눈
+  r: '#ff9aa8',                // 볼
+  d: '#ffffff',                // 드레스
+  b: '#ff6fa5',                // 부케
+  g: '#16c60c',                // 잎
+  k: '#2c3e66',                // 턱시도
+  w: '#ffffff',                // 셔츠
+  t: '#ff3b5c',                // 나비넥타이
+  f: '#ff6fa5',                // 부토니에르
+  p: '#223355',                // 바지
+  o: '#6a6a6a'                 // 구두
+};
+const SPRITES = {
+  bride: [
+    '....cccc....',
+    '..vvhhhhvv..',
+    '.vvhhhhhhvv.',
+    '.vvhsssshvv.',
+    '.vvsessesvv.',
+    '.vvsrssrsvv.',
+    '.vvvssssvvv.',
+    'vvvddddddvvv',
+    'vvsddddddsvv',
+    'vvdsbbbbsdvv',
+    'vvddgbbgddvv',
+    'vvdddggdddvv',
+    'vvddddddddvv',
+    'vddddddddddv',
+    'vddddddddddv',
+    'dddddddddddd',
+    'dddddddddddd'
+  ],
+  groom: [
+    '............',
+    '....HHHH....',
+    '...HHHHHH...',
+    '...HssssH...',
+    '...sesses...',
+    '...srssrs...',
+    '....ssss....',
+    '..kkwttwkk..',
+    '.kkkkwwkkkk.',
+    '.kkfkwwkkkk.',
+    '.kkkkwwkkkk.',
+    '.skkkkkkkks.',
+    '..kkkkkkkk..',
+    '..pppppppp..',
+    '..ppp..ppp..',
+    '..ppp..ppp..',
+    '.ooo....ooo.'
+  ]
+};
+const SP_W = 12, SP_H = 17;
+const toPixels = rows => {
+  const px = [];
+  rows.forEach((row, r) => [...row].forEach((ch, c) => { if (ch !== '.') px.push({ r, c, col: PAL[ch], at: 0 }); }));
+  return px;
+};
+const bridePx = toPixels(SPRITES.bride);
+const groomPx = toPixels(SPRITES.groom);
+
+// 타임라인 (ms)
+const T_PLOT = 1900;                 // 테두리 도트 찍기
+const T_MOVE = 2600;                 // 양쪽 반쪽이 다가옴
+const T_CONTACT = T_PLOT + T_MOVE;   // 맞닿음
+const T_FILL_START = T_CONTACT + 300;
+const T_FILL = 2100;                 // 속이 채워짐
+const T_END = T_FILL_START + T_FILL;
+
+function scheduleDots() {
+  const outl = cells.filter(k => k.outline).sort(() => Math.random() - .5);
+  outl.forEach((k, i) => { k.at = i / outl.length * (T_PLOT - 250); });
+  cells.filter(k => !k.outline).forEach(k => {
+    const fromSeam = Math.abs(k.c + .5 - MID) / MID;
+    k.at = T_FILL_START + (fromSeam * .82 + Math.random() * .18) * (T_FILL - 260);
+  });
+  // 캐릭터는 위에서 아래로 한 점씩 찍힌다
+  for (const px of [bridePx, groomPx]) {
+    px.forEach((q, i) => { q.at = 150 + i / px.length * (T_PLOT - 350) + Math.random() * 120; });
+  }
+}
+
+let W, H, s, heartW, heartH, gap0, cx, top0, fs, p, spriteTop;
+function layout() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = stage.clientWidth || 300;
+  s = Math.max(5, Math.floor(w * .56 / COLS));
+  heartW = COLS * s;
+  heartH = (maxR - minR + 1) * s;
+  gap0 = Math.max(0, Math.min(w * .17, (w - heartW) / 2 - 2));
+  fs = Math.max(12, Math.round(s * 1.7));
+  W = w;
+  top0 = Math.round(s * 1.2);
+  p = Math.max(3, Math.floor(s * .8));
+  spriteTop = top0 + heartH + Math.round(s * 1.8);
+  H = spriteTop + SP_H * p + fs * 3.4 + 8;
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  cv.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cx = W / 2;
+}
+
+const clamp = v => Math.max(0, Math.min(1, v));
+const easeInOut = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const easeOutBack = x => 1 + 2.7 * Math.pow(x - 1, 3) + 1.7 * Math.pow(x - 1, 2);
+const bump = (b, c) => Math.exp(-Math.pow((b - c) / .05, 2));
+const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, m) => { const A = rgb(a), B = rgb(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * m)).join(',')})`; };
+
+let progEl = null, lastProg = '';
+function updateProgress(t) {
+  if (!progEl) return;
+  let label, pct;
+  if (t < T_PLOT) { label = 'plot  '; pct = t / T_PLOT; }
+  else if (t < T_CONTACT) { label = 'merge '; pct = easeInOut((t - T_PLOT) / T_MOVE); }
+  else { label = 'fill  '; pct = clamp((t - T_FILL_START) / T_FILL); }
+  pct = clamp(pct);
+  const n = Math.round(pct * 10);
+  const txt = `> ${label}[${'#'.repeat(n)}${'.'.repeat(10 - n)}] ${String(Math.round(pct * 100)).padStart(3, ' ')}%`;
+  if (txt !== lastProg) { progEl.firstChild.data = txt; lastProg = txt; }
+}
+
+function drawSprite(px, centerX, t) {
+  const x0 = centerX - SP_W * p / 2;
+  const d = p * .88;
+  for (const q of px) {
+    const dt = t - q.at;
+    if (dt < 0) continue;
+    const sz = d * easeOutBack(clamp(dt / 200));
+    ctx.fillStyle = q.col;
+    ctx.fillRect(x0 + q.c * p + p / 2 - sz / 2, spriteTop + q.r * p + p / 2 - sz / 2, sz, sz);
+  }
+}
+
+// 캐릭터 아래: 이름 → 신부/신랑
+function drawLabel(x, y, role, name, color, alpha) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = COLORS.fg;
+  ctx.font = `700 ${fs}px "Nanum Gothic Coding", monospace`;
+  ctx.fillText(name, x, y);
+  ctx.fillStyle = color;
+  ctx.font = `400 ${Math.round(fs * .92)}px "Nanum Gothic Coding", monospace`;
+  ctx.fillText(role, x, y + fs * 1.4);
+  ctx.globalAlpha = 1;
+}
+
+function draw(t) {
+  ctx.clearRect(0, 0, W, H);
+  const e = easeInOut(clamp((t - T_PLOT) / T_MOVE));
+  const off = gap0 * (1 - e);
+  const m = clamp((t - T_CONTACT) / (T_END - T_CONTACT));
+  const hy = top0 + heartH / 2;
+
+  let sc = 1;
+  if (!reduce && t > T_END) {
+    const b = ((t - T_END) % 1300) / 1300;
+    sc = 1 + .06 * (bump(b, .08) + .55 * bump(b, .28));
+  }
+  ctx.save();
+  ctx.translate(cx, hy); ctx.scale(sc, sc); ctx.translate(-cx, -hy);
+
+  // 맞닿는 순간 번쩍
+  if (t > T_CONTACT && t < T_CONTACT + 900) {
+    const a = 1 - (t - T_CONTACT) / 900;
+    const g = ctx.createRadialGradient(cx, hy, 0, cx, hy, heartW * .75);
+    g.addColorStop(0, `rgba(255,70,100,${.5 * a})`);
+    g.addColorStop(1, 'rgba(255,70,100,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  const d = s * .8;
+  ctx.shadowBlur = s * .9;
+  for (const k of cells) {
+    const dt = t - k.at;
+    if (dt < 0) continue;
+    const p = easeOutBack(clamp(dt / 220));
+    const base = k.side < 0 ? COLORS.bride : COLORS.groom;
+    const col = k.outline ? mix(base, COLORS.love, m) : COLORS.fill;
+    const x = cx - heartW / 2 + k.c * s + s / 2 + k.side * off;
+    const y = top0 + (k.r - minR) * s + s / 2;
+    const sz = d * p;
+    ctx.fillStyle = col;
+    ctx.shadowColor = col;
+    ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // 왼쪽 신부 / 오른쪽 신랑: 도트 캐릭터 + 이름 + 역할
+  const lx = heartW / 4 + off;
+  drawSprite(bridePx, cx - lx, t);
+  drawSprite(groomPx, cx + lx, t);
+
+  const la = clamp((t - T_PLOT * .6) / 600);
+  const ly = spriteTop + SP_H * p + fs * 1.4;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  drawLabel(cx - lx, ly, '신부', CONFIG.bride, mix(COLORS.bride, COLORS.love, m * .5), la);
+  drawLabel(cx + lx, ly, '신랑', CONFIG.groom, mix(COLORS.groom, COLORS.love, m * .5), la);
+  if (m > 0) {
+    ctx.globalAlpha = m;
+    ctx.fillStyle = COLORS.love;
+    ctx.font = `700 ${fs}px "Nanum Gothic Coding", monospace`;
+    ctx.fillText('♥', cx, spriteTop + SP_H * p * .5);
+    ctx.globalAlpha = 1;
+  }
+
+  updateProgress(t);
+}
+
+let heartStart = null, heartDone = null, rafId = null;
+function frame(now) {
+  rafId = requestAnimationFrame(frame);
+  if (heartStart === null) return;
+  const t = reduce ? T_END + 1 : now - heartStart;
+  draw(t);
+  if (t >= T_END && heartDone) { const r = heartDone; heartDone = null; r(); }
+}
+function playHeart() {
+  scheduleDots();
+  layout();
+  autoScroll(true);   // 하트·캐릭터가 화면에 다 들어오도록
+  return new Promise(res => {
+    heartDone = res;
+    heartStart = performance.now();
+    if (!rafId) rafId = requestAnimationFrame(frame);
+  });
+}
+// 화면 크기·회전이 바뀌면 하트·캐릭터 크기를 다시 계산
+let lastStageW = 0;
+const relayout = () => {
+  if (heartStart === null) return;
+  const w = stage.clientWidth;
+  if (w && w !== lastStageW) { lastStageW = w; layout(); }
+};
+window.addEventListener('resize', relayout);
+window.addEventListener('orientationchange', () => setTimeout(relayout, 250));
+if ('ResizeObserver' in window) new ResizeObserver(relayout).observe(stage);
+
+/* ------------------------- 진행 스크립트 ------------------------- */
+async function run() {
+  const id = ++runId;
+  follow = true;
+  heartStart = null; heartDone = null; progEl = null; lastProg = '';
+  out.innerHTML = '';
+  try {
+    printLine('Microsoft Windows [Version 10.0.26200]', 'dim');
+    printLine('(c) Our Wedding. All rights reserved.', 'dim');
+    printLine('');
+    await sleep(500, id);
+    await typeLine('cd love', id, { prompt: 'C:\\Users>' });
+    await sleep(300, id);
+    printLine('');
+    await typeLine(`wedding.exe --bride "${CONFIG.bride}" --groom "${CONFIG.groom}"`, id, { prompt: PROMPT, speed: 26 });
+    await sleep(350, id);
+    printLine('[init] 두 사람의 마음을 불러오는 중...', 'warn');
+    await sleep(400, id);
+
+    out.appendChild(stage);
+    progEl = printLine('', 'ok');
+    progEl.insertBefore(document.createTextNode(''), cursor);
+    await playHeart();
+    progEl.appendChild(cursor);
+
+    await sleep(300, id);
+    await typeLine('>> 두 마음이 하나로 합쳐졌습니다. (exit code 0)', id, { cls: 'love b', speed: 30 });
+    await sleep(500, id);
+
+    const card = document.createElement('div');
+    card.className = 'card fade';
+    out.appendChild(card);
+    await typeLine('[ INVITATION ]', id, { cls: 'ok b', parent: card, speed: 40 });
+    newLine('spacer', card);
+    for (const msg of CONFIG.message) {
+      if (msg === '') { newLine('spacer', card); continue; }
+      await typeLine(msg, id, { parent: card, speed: 45 });
+    }
+    newLine('spacer', card);
+    await typeLine(`${CONFIG.groomParents}  신랑 ${CONFIG.groom}`, id, { cls: 'blue', parent: card, speed: 22 });
+    await typeLine(`${CONFIG.brideParents}  신부 ${CONFIG.bride}`, id, { cls: 'pink', parent: card, speed: 22 });
+    newLine('spacer', card);
+    await typeLine(`일시 : ${CONFIG.date}`, id, { parent: card, speed: 22 });
+    await typeLine(`장소 : ${CONFIG.place}`, id, { parent: card, speed: 22 });
+    await typeLine(`주소 : ${CONFIG.address}`, id, { cls: 'dim', parent: card, speed: 18 });
+
+    const actions = document.createElement('div');
+    actions.className = 'actions fade';
+    const btn = (label, fn) => {
+      const b = document.createElement('button');
+      b.className = 'cmd-btn';
+      b.textContent = `[ ${label} ]`;
+      b.addEventListener('click', fn);
+      actions.appendChild(b);
+      return b;
+    };
+    if (CONFIG.mapUrl) btn('지도 보기', () => window.open(CONFIG.mapUrl, '_blank', 'noopener'));
+    const copyBtn = btn('주소 복사', async () => {
+      try { await navigator.clipboard.writeText(CONFIG.address); copyBtn.textContent = '[ 복사됨 ✓ ]'; }
+      catch (e) { copyBtn.textContent = '[ 복사 실패 ]'; }
+      setTimeout(() => { copyBtn.textContent = '[ 주소 복사 ]'; }, 1600);
+    });
+    btn('다시 보기', () => { window.scrollTo({ top: 0 }); run(); });
+    card.appendChild(actions);
+    autoScroll(true);
+
+    printLine('');
+    const last = newLine();
+    last.textContent = PROMPT + ' ';
+    last.appendChild(cursor);
+  } catch (e) {
+    if (e !== 'stop') throw e;
+  }
+}
+
+/* ------------------------- 설정 화면 (신랑·신부 전용) ------------------------- */
+// SHA-256 (http 주소에서도 동작하도록 직접 구현)
+const SHA_K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+const SHA_H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+function sha256(str) {
+  const ror = (x, n) => (x >>> n) | (x << (32 - n));
+  const bytes = new TextEncoder().encode(str);
+  const len = bytes.length, total = ((len + 9 + 63) >> 6) << 6;
+  const buf = new Uint8Array(total);
+  buf.set(bytes); buf[len] = 0x80;
+  const dv = new DataView(buf.buffer);
+  dv.setUint32(total - 8, Math.floor(len / 0x20000000));
+  dv.setUint32(total - 4, (len * 8) >>> 0);
+  const H = SHA_H.slice(), w = new Uint32Array(64);
+  for (let i = 0; i < total; i += 64) {
+    for (let t = 0; t < 16; t++) w[t] = dv.getUint32(i + t * 4);
+    for (let t = 16; t < 64; t++) {
+      const x = w[t - 15], y = w[t - 2];
+      w[t] = (w[t - 16] + (ror(x, 7) ^ ror(x, 18) ^ (x >>> 3)) + w[t - 7] + (ror(y, 17) ^ ror(y, 19) ^ (y >>> 10))) | 0;
+    }
+    let [a, b, c, d, e, f, g, h] = H;
+    for (let t = 0; t < 64; t++) {
+      const t1 = (h + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + SHA_K[t] + w[t]) | 0;
+      const t2 = ((ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    [a, b, c, d, e, f, g, h].forEach((v, j) => { H[j] = (H[j] + v) | 0; });
+  }
+  return H.map(v => (v >>> 0).toString(16).padStart(8, '0')).join('');
+}
+const randomHex = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => b.toString(16).padStart(2, '0')).join('');
+
+const FIELDS = [
+  ['groom', '신랑 이름'],
+  ['bride', '신부 이름'],
+  ['groomParents', '신랑 쪽 부모님 (예: 김OO · 박OO 의 아들)'],
+  ['brideParents', '신부 쪽 부모님 (예: 이OO · 최OO 의 딸)'],
+  ['date', '일시'],
+  ['place', '장소'],
+  ['address', '주소'],
+  ['mapUrl', '지도 링크 (없으면 비워 두세요)'],
+  ['message', '초대 문구 (줄바꿈 그대로 · 빈 줄은 한 줄 띄움)', 'textarea']
+];
+const DRAFT_KEY = 'wedding-invitation-draft';
+const panel = document.getElementById('panel');
+const loginForm = document.getElementById('login');
+const editForm = document.getElementById('editor');
+const $ = id => document.getElementById(id);
+let unlocked = false;
+
+FIELDS.forEach(([key, label, type]) => {
+  const wrap = document.createElement('div');
+  wrap.className = 'field';
+  const lb = document.createElement('label');
+  lb.htmlFor = 'f_' + key; lb.textContent = label;
+  const el = document.createElement(type === 'textarea' ? 'textarea' : 'input');
+  el.id = 'f_' + key;
+  if (el.tagName === 'INPUT') el.type = key === 'mapUrl' ? 'url' : 'text';
+  wrap.append(lb, el);
+  $('fields').appendChild(wrap);
+});
+
+function fillForm(cfg) {
+  FIELDS.forEach(([key]) => {
+    $('f_' + key).value = key === 'message' ? (cfg.message || []).join('\n') : (cfg[key] || '');
+  });
+}
+function readForm() {
+  const cfg = {};
+  FIELDS.forEach(([key]) => {
+    const v = $('f_' + key).value;
+    cfg[key] = key === 'message' ? v.replace(/\r/g, '').split('\n') : v.trim();
+  });
+  return cfg;
+}
+function saveDraft() {
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(readForm())); } catch (e) {}
+}
+function loadDraft() {
+  try { const d = localStorage.getItem(DRAFT_KEY); return d ? JSON.parse(d) : null; } catch (e) { return null; }
+}
+editForm.addEventListener('input', saveDraft);
+
+function openPanel() {
+  panel.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  if (CONFIG.lock && !unlocked) {
+    loginForm.hidden = false; editForm.hidden = true;
+    $('loginMsg').textContent = '';
+    $('pw').value = '';
+    setTimeout(() => $('pw').focus(), 50);
+  } else {
+    showEditor();
+  }
+}
+function closePanel() {
+  panel.classList.remove('open');
+  document.body.style.overflow = '';
+  if (location.hash === '#edit') history.replaceState(null, '', location.pathname + location.search);
+}
+function showEditor() {
+  loginForm.hidden = true; editForm.hidden = false;
+  fillForm(Object.assign({}, CONFIG, loadDraft() || {}));
+  $('newPw').value = ''; $('newPw2').value = '';
+  $('newPwLabel').textContent = CONFIG.lock ? '새 비밀번호 (바꿀 때만 입력)' : '비밀번호 정하기 (처음 저장할 때 꼭 필요)';
+  $('editMsg').textContent = loadDraft() ? '저장하지 않은 수정 내용을 불러왔습니다.' : '';
+  $('editMsg').className = 'msg dim';
+}
+panel.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closePanel));
+
+loginForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const pw = $('pw').value;
+  if (CONFIG.lock && sha256(CONFIG.lock.salt + pw) === CONFIG.lock.hash) {
+    unlocked = true;
+    showEditor();
+  } else {
+    $('loginMsg').textContent = '비밀번호가 맞지 않습니다.';
+  }
+});
+
+function editMsg(text, cls) { $('editMsg').textContent = text; $('editMsg').className = 'msg ' + cls; }
+
+$('btnPreview').addEventListener('click', () => {
+  Object.assign(CONFIG, readForm());
+  closePanel();
+  window.scrollTo({ top: 0 });
+  run();
+});
+
+editForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const cfg = readForm();
+  if (!cfg.groom || !cfg.bride) return editMsg('신랑·신부 이름은 비울 수 없습니다.', 'warn');
+
+  const p1 = $('newPw').value, p2 = $('newPw2').value;
+  let lock = CONFIG.lock;
+  if (p1 || p2 || !lock) {
+    if (!p1) return editMsg('처음 저장할 때는 비밀번호를 정해야 합니다.\n(정하지 않으면 하객도 설정 화면을 열 수 있습니다)', 'warn');
+    if (p1.length < 6) return editMsg('비밀번호는 6자 이상으로 정해 주세요.', 'warn');
+    if (p1 !== p2) return editMsg('비밀번호 확인이 일치하지 않습니다.', 'warn');
+    const salt = randomHex(16);
+    lock = { salt, hash: sha256(salt + p1) };
+  }
+  cfg.lock = lock;
+
+  const json = JSON.stringify(cfg, null, 2).replace(/</g, '\\u003c');
+  const html = ORIGINAL_HTML.replace(
+    /(<script type="application\/json" id="wedding-config">)[\s\S]*?(<\/script>)/,
+    (_, a, b) => a + '\n' + json + '\n' + b
+  );
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = 'wedding_invitation.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+
+  Object.assign(CONFIG, cfg);
+  unlocked = true;
+  try { localStorage.removeItem(DRAFT_KEY); } catch (err) {}
+  $('newPw').value = ''; $('newPw2').value = '';
+  $('newPwLabel').textContent = '새 비밀번호 (바꿀 때만 입력)';
+  editMsg('저장했습니다: wedding_invitation.html\n이 파일을 청첩장 주소에 다시 올리면 하객 화면이 바뀝니다.', 'ok');
+});
+
+// 들어가는 방법: 제목 표시줄 5번 연속 누르기 · 주소 끝에 #edit
+let taps = [];
+document.querySelector('.win .bar').addEventListener('click', () => {
+  const now = Date.now();
+  taps = taps.filter(t => now - t < 2500).concat(now);
+  if (taps.length >= 5) { taps = []; openPanel(); }
+});
+window.addEventListener('hashchange', () => { if (location.hash === '#edit') openPanel(); });
+
+(async () => {
+  try { await document.fonts.load('700 14px "Nanum Gothic Coding"'); } catch (e) {}
+  run();
+  if (location.hash === '#edit') openPanel();
+})();
+</script></body></html>
